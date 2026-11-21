@@ -19,9 +19,19 @@ Windows 11 (32GB RAM)
             │   ├── envoy-gateway（Gateway Controller：CR→xDS 翻译）
             │   └── envoy-gateway-lab-lab-gateway（Envoy Data Plane：L7 代理）
             │       └── LoadBalancer Service :80
-            └── ns gateway-lab：Gateway lab-gateway + HTTPRoute
-                └── backend-v1×3 / backend-v2 / slow-backend
+            ├── ns gateway-lab：Gateway lab-gateway + HTTPRoute
+            │   └── backend-v1×3 / backend-v2 / slow-backend
+            ├── ns cnpg-system：CloudNativePG operator v1.30.2（数据平面 Owner）
+            └── ns database：Cluster pg-lab（PG 18.7，主备异步流复制，PVC 1Gi×2）
+                ├── 服务 pg-lab-rw / -ro / -r；PodMonitor 接入 Prometheus
+                └── backup-pod（pg_dump 逻辑备份 → backup-data PVC）
 ```
+
+## 数据平面现状（各组件自带 Owner）
+
+| 组件 | Owner | 高可用 | 备份路径 | 状态 |
+|---|---|---|---|---|
+| PostgreSQL 18.7 | CloudNativePG Operator | 2 实例异步流复制（实测 failover RTO 14~138s，RPO=0） | 逻辑 pg_dump→PVC（物理备份需对象存储，未配置） | Healthy |
 
 ## 流量路径（南北向）
 

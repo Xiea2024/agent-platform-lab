@@ -10,43 +10,41 @@
 | 02 | Metrics + Prometheus + Grafana | ✅ 已完成，待最终验收 |
 | 03 | Argo CD GitOps | ✅ 已完成，待最终验收 |
 | 04 | Envoy Gateway + Gateway API | ✅ 已完成，待最终验收 |
-| 05+ | 待规划（建议：数据平面 PostgreSQL，先做磁盘清理评估） | 未开始 |
+| 05 | cert-manager 评估 + CloudNativePG（HA/备份/RPO-RTO） | ✅ 已完成，待最终验收 |
+| 06+ | 待规划（建议：Redis 或 MQ；磁盘已解除预警） | 未开始 |
 
-## 阶段 04 — Envoy Gateway + Gateway API
+## 阶段 05 — cert-manager 评估 + CloudNativePG
 
-### Preflight / Plan（2026-11-21，获批）
+### Preflight / Plan（2026-11-21，分两批获批）
 
-- GatewayClass 无（干净起点）；Gateway API standard CRD 已由 k3s 自带（1.6.301）；Envoy Gateway v1.10.0 核实
+- cert-manager 不存在且 CloudNativePG 无依赖 → **不安装**（避免重复组件）✓
+- CloudNativePG v1.30.2（chart 0.29.2，ghcr OCI）；磁盘 95.2GB ✓
 
-### Deploy（排错密集，全部解决）
+### Deploy / Verify
 
-- chart 经 daocloud 镜像站 OCI 拉取；`crds.enabled=false` 避开 experimental/standard channel 冲突（VAP 保护机制）
-- 手工补齐 8 个 gateway.envoyproxy.io CRD（2 个大 CRD 用 server-side apply 绕开 256KB 注解限制）
-- 手工创建 GatewayClass eg → controller 拉起 Envoy data plane（镜像拉取 EOF 为网络抖动，重试成功）
+- operator + pg-lab（2 实例，PG 18.7，PVC 1Gi×2，异步流复制，PodMonitor 接入 Prometheus）
+- 服务 -rw/-ro/-r；数据 100 行主备一致；`cnpg_pg_replication_lag=0`
+- 排错：镜像 tag 需与实例一致（18.7-system-trixie）、裸 Pod 改 image 须重建、pg_dump 版本匹配、1.30 无 superuser secret（用 app 用户 + 属主转让）
 
-### Experiment（六项全部通过）
+### Experiment
 
 | 实验 | 结果 |
 |---|---|
-| 路由 | /v1、/v2 经 URLRewrite 正确分发（排错：v1.4+ replacePrefixMatch 为字符串字段） |
-| 负载均衡 | 9 次请求分布 3 个 Pod（Envoy 加权轮询） |
-| 权重切流 | 80/20 → 50 次实测 41:9≈82:18；0/100 全量切 v2 ✓ |
-| 无健康后端 | 独占规则 503；加权规则自动跳过空池（均 200）；恢复副本自愈 ✓ |
-| 超时 | /slow 2.006s 精确返回 504（backendRequest: 2s）✓ |
-| 回滚 | 重应用声明文件，权重回 100/0，流量全回 v1 ✓ |
+| 物理备份路径 | `Backup` CR failed（no backup section）→ 需对象存储，证据记录 |
+| 逻辑备份闭环 | pg_dump → PVC → pg_restore → 校验 100 行 ✓ |
+| Pod 重建（非破坏性） | **实测为自动 failover**：备升主、原主重建为备；RTO≈14s，**RPO=0** |
+| 受控主故障（二次 failover，单独获批） | RTO=**138s**（收敛期故障显著变慢），**RPO=0**（时间线铁证）；拓扑恢复初始 |
 
 ### Review（资源实测）
 
-- envoy controller 46Mi + data plane 43Mi + 后端 50Mi；VM used 4567MiB（28% 预算）
-- **C: 剩 19.8GB，标记为后续阶段首要约束**
+- pg 115Mi + operator 33Mi；VM used 5082MiB（31%）；C: 96.7GB
 
 ### Definition of Done 核对
 
-- [x] 部署可复现（含 6 步排错记录）；核心功能六项验证
-- [x] Controller/Data Plane 关系图解（experiments/04 §1）
-- [x] 资源占用记录；异常记录（channel 冲突、注解超限、镜像 EOF）
-- [x] 生产差异（§4）；清理步骤（§5）
+- [x] 部署可复现；PVC/主备角色/备份路径全检查；两次故障实验 + RPO/RTO 观测表
+- [x] 单副本重启 vs 多副本切换区分（experiments/05 §4.3）
+- [x] 资源占用；异常记录；生产差异（§6）；清理步骤（§7）
 
-## 阶段 01–03 归档
+## 阶段 01–04 归档
 
-- 01：`experiments/01-kubernetes-baseline.md`；02：`experiments/02-monitoring.md`；03：`experiments/03-gitops-argocd.md`
+- 01 `experiments/01-kubernetes-baseline.md` / 02 `experiments/02-monitoring.md` / 03 `experiments/03-gitops-argocd.md` / 04 `experiments/04-gateway-api.md`

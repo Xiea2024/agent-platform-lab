@@ -1,0 +1,11 @@
+# 物理备份路径检查：本集群未配置对象存储/卷快照
+# 预期状态：Backup CR 处于不可调度状态并给出明确错误信息（作为路径证据）
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: backup-path-check
+  namespace: database
+spec:
+  cluster:
+    name: pg-lab
+  method: barmanObjectStore

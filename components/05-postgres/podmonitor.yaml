@@ -1,0 +1,14 @@
+# CloudNativePG 1.30 起 PodMonitor 需手动管理（enablePodMonitor 已废弃）
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg-lab
+  namespace: database
+  labels:
+    release: kube-prometheus-stack # 匹配 Prometheus 的 podMonitorSelector
+spec:
+  selector:
+    matchLabels:
+      postgresql.cnpg.io/cluster: pg-lab
+  podMetricsEndpoints:
+    - port: metrics # CNPG 实例内置 metrics 端口

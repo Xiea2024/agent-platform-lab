@@ -1,0 +1,35 @@
+# 逻辑备份载体：独立备份 Pod（挂备份 PVC），演示 pg_dump → pg_restore 闭环
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-data
+  namespace: database
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-pod
+  namespace: database
+  labels:
+    app: backup-pod
+spec:
+  containers:
+    - name: tools
+      # 与 CNPG 实例同源镜像，自带 pg_dump / pg_restore / psql
+      image: ghcr.io/cloudnative-pg/postgresql:18.7-system-trixie # 与集群实例镜像完全一致（客户端版本匹配）
+      command: ["sleep", "infinity"]
+      volumeMounts:
+        - {name: backup, mountPath: /backup}
+      resources:
+        requests: {cpu: "50m", memory: "64Mi"}
+        limits: {cpu: "200m", memory: "256Mi"}
+  volumes:
+    - name: backup
+      persistentVolumeClaim:
+        claimName: backup-data

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-lab
+  namespace: database
+  labels:
+    app.kubernetes.io/part-of: pg-ha-lab
+spec:
+  # 2 实例：1 主 + 1 异步流复制备（本阶段实验对象）
+  instances: 2
+  storage:
+    size: 1Gi
+    storageClass: local-path
+  monitoring:
+    enablePodMonitor: true # 接入阶段 02 Prometheus
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "512Mi"
+  postgresql:
+    parameters:
+      shared_buffers: "128MB"

@@ -89,3 +89,25 @@
 
 - 宿主机（helm/curl）→ docker hub 认证端点被墙；Docker daemon → 配 daocloud 镜像站正常；集群内容器 → 与宿主网络同层，偶发 EOF（重试即可）
 - 原则：**宿主机获取制品（chart/tgz）走镜像站 OCI 路径；容器镜像拉取依赖 daemon mirror 不变**
+
+
+---
+
+## 2026-11-21 · 阶段 05：cert-manager 评估 + CloudNativePG
+
+### D-13 数据库 Operator：CloudNativePG
+
+- **选择**：CloudNativePG v1.30.2，2 实例异步流复制
+- **理由**：K8s 原生 PostgreSQL Operator（CNCF Sandbox，贡献者即 PG 核心公司 EDB）；声明式 Cluster CR 管理主备/failover/备份/监控，与 GitOps 模型契合；不重复造数据库（§3.6）
+- **替代方案**：Zalando Postgres Operator、CrunchyData PGO、KubeBlocks、Bitnami PostgreSQL Helm（主备靠 InitContainer/Patroni，无 Operator 级 failover）
+- **为什么不选 Bitnami Helm**：Helm 主备缺乏 Operator 的故障转移编排能力，实验目标含"多副本切换/RPO-RTO 观测"，需要真正的大脑
+
+### D-14 cert-manager 暂不安装
+
+- CloudNativePG webhook 证书内置自签（chart 0.29.2 无 cert-manager 依赖），当前唯一消费者不需要 → 不安装
+- 触发重新评估的条件：需要 Ingress TLS 自动化 / 客户端 mTLS / 多组件共享 CA
+
+### D-15 实验拓扑无对象存储，物理备份路径记录为限制
+
+- 物理备份（barmanObjectStore / VolumeSnapshot）要求实验环境不具备的设施；用 `Backup` CR 实测报错作为证据
+- 逻辑备份（pg_dump→PVC→pg_restore）作为实验内闭环路径；生产方案（S3+WAL 归档+PITR）写入文档差异章节
