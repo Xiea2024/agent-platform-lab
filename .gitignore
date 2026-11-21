@@ -1,0 +1,16 @@
+# OS 噪音
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 编辑器/IDE
+.idea/
+.vscode/
+*.swp
+
+# 本地密钥与临时文件（ secrets 一律不进 Git，见 AGENTS.md §6 ）
+*.pem
+*.key
+.env
+.env.*
+*.log

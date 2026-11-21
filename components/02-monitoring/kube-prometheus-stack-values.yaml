@@ -1,0 +1,88 @@
+# kube-prometheus-stack 93.6.1 — 最小化实验配置
+# 适用：k3d（k3s v1.37.2）单节点实验集群
+# 原则：关闭 k3s 中无独立 endpoint 的控制面组件抓取；限制保留时长与内存
+
+# ---- k3s 适配：禁用内嵌组件的独立抓取（无对应 endpoints，只会产生 down 目标）----
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# 同步关闭这些组件的默认告警规则，避免无效告警噪音
+defaultRules:
+  rules:
+    etcd: false
+    kubeScheduler: false
+    kubeControllerManager: false
+
+# ---- 保留核心组件 ----
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+
+# ---- Alertmanager（最小化，无持久化）----
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    storage:
+      emptyDir: {}
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# ---- Grafana（无持久化；密码用 chart 默认 prom-operator，不写进 Git）----
+grafana:
+  enabled: true
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi # Grafana 13 全量仪表盘 provision 实测 256Mi 会 OOM(137)，上调
+
+# ---- Prometheus Operator ----
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ---- Prometheus（数据保留 3 天，emptyDir，限内存 1Gi）----
+prometheus:
+  prometheusSpec:
+    retention: 3d
+    storageSpec:
+      emptyDir: {}
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+# ---- node-exporter 资源约束 ----
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

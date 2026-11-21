@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: lab-load-alert
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack # 与 Prometheus 的 ruleSelector 匹配
+spec:
+  groups:
+    - name: lab-load-test
+      rules:
+        - alert: LabLoadTestCpuHigh
+          expr: sum(rate(container_cpu_usage_seconds_total{namespace="load-test"}[1m])) by (pod) > 0.5
+          for: 1m
+          labels:
+            severity: warning
+            team: lab
+          annotations:
+            summary: "load-test Pod {{ $labels.pod }} CPU 使用率超阈值"
+            description: "Pod {{ $labels.pod }} 最近 1 分钟 CPU 使用 {{ $value | humanizePercentage }} 核（阈值 0.5 核）"

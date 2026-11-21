@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: load-test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-loader
+  namespace: load-test
+  labels:
+    app: cpu-loader
+spec:
+  containers:
+    - name: loader
+      image: busybox:1.36
+      # 纯计算负载：不断向 /dev/null 输出，打满 limits 允许的 1 核 CPU
+      command: ["sh", "-c", "yes > /dev/null"]
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "16Mi"
+        limits:
+          cpu: "1"
+          memory: "64Mi"
