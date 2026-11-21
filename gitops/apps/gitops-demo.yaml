@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitops-demo
+  namespace: argocd
+  # 注意：不设置 resources-finalizer.argocd.argoproj.io
+  # —— 删除 Application 不会级联删除集群资源（安全边界）
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Xiea2024/agent-platform-lab.git
+    targetRevision: main
+    path: gitops/workloads/gitops-demo
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitops-demo
+  syncPolicy:
+    automated:
+      prune: false   # Git 删除文件不自动删除集群资源
+      selfHeal: false # 手动改集群（Drift）不会被自动纠正，便于实验观察
+    syncOptions:
+      - CreateNamespace=true

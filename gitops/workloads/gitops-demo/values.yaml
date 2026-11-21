@@ -1,0 +1,22 @@
+# gitops-demo 默认 values（GitOps 管理的唯一事实来源）
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+# 写入 ConfigMap 的业务版本标记：用于观察 Git 同步与回滚时的内容变化
+appVersion: "1.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
