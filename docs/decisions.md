@@ -50,3 +50,25 @@
 - Prometheus `retention 3d` + emptyDir；Grafana / Alertmanager 无持久化
 - **理由**：实验环境数据可弃，emptyDir 免除 local-path 的容量管理；retention 限制磁盘上限（预计 <1GB）
 - **生产差异**：PVC + 更长保留 + 对象存储归档，已记录于实验文档 §6
+
+
+---
+
+## 2026-11-21 · 阶段 03：Argo CD（GitOps）
+
+### D-08 GitOps 部署模式：Argo CD + 本仓库单仓结构
+
+- **选择**：Argo CD v3.6.2（helm chart 10.18.2）；仓库内新增 `gitops/{bootstrap,apps,workloads}` 三层结构
+- **理由**：Git 作为唯一事实来源与 AGENTS.md §3.9 声明式配置原则一致；Application CR 注册应用、Helm chart 管理 values，与后续数据组件的发布模式复用
+- **安全边界**：Application 无 finalizer、prune=false、selfHeal=false；示例应用独立于现存关键服务；不含 PVC
+- **替代方案**：Flux CD（GitOps 另一主流，拉式模型类似）、Argo CD ApplicationSet 多应用管理（后续规模大了再引入）
+
+### D-09 回滚语义：git revert 而非 argocd rollback
+
+- **实测结论**：auto-sync 开启时 Argo CD API 拒绝 CLI rollback（FailedPrecondition），因其会被下次轮询立即覆盖
+- **取舍**：回滚 = 在 Git 声明反向 commit（已验证：revert push 后 ~2min 自动收敛）。这强化了"Git 是唯一事实来源"的纪律，代价是回滚必须过 Git 流程（生产应配 PR 保护）
+
+### D-10 chart 获取路径：ghcr OCI 作为本环境首选
+
+- 本机 DNS 拦截 `raw.githubusercontent.com` / `*.github.io`（0.0.0.0 黑洞），ghcr.io / api.github.com / quay.io / docker.io 正常
+- 组件选型时把"是否有 ghcr OCI 制品"作为可达性权重项；需要 GitHub 文件时走 blobs API

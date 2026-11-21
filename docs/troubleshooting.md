@@ -57,6 +57,41 @@ helm install kube-prometheus-stack oci://ghcr.io/prometheus-community/charts/kub
 
 ---
 
+## 2026-11-21 · 本机 DNS 拦截部分 GitHub 域名（getaddrinfow: no data / 0.0.0.0）
+
+**现象**
+
+阶段 03 安装 Argo CD 时：
+
+```
+helm repo add argo https://argoproj.github.io/argo-helm
+Error: ... lookup argoproj.github.io: getaddrinfow: The requested name is valid, but no data of the requested type is found
+```
+
+**排查**
+
+`nslookup` 结果对比：
+
+| 域名 | 解析结果 | 结论 |
+|---|---|---|
+| raw.githubusercontent.com | **0.0.0.0** | 被拦截（黑洞） |
+| argoproj.github.io | **0.0.0.0** | 被拦截（黑洞） |
+| api.github.com | 正常 | 可用 |
+| github.com | 正常（git push 成功） | 可用 |
+| quay.io / ghcr.io / docker.io | 正常 | 可用 |
+
+**根因**：本地 DNS 对 raw.githubusercontent.com、*.github.io 等域名返回 0.0.0.0（典型网络环境拦截）。
+
+**解决（按优先级）**
+
+1. 目标组件若发布 ghcr OCI 制品，优先用 OCI（Argo CD chart：`oci://ghcr.io/argoproj/argo-helm/argo-cd:10.18.2`）
+2. 单文件可用 GitHub Contents/Blobs API（api.github.com 可达）经 `Accept: application/vnd.github.raw` 直接取 raw 内容
+3. 大文件（>1MB）用 git blobs API 的 sha 直接拉取，绕开 contents API 的 1MB 限制
+
+**注意**：未修改 hosts / DNS（属系统配置变更，需架构负责人批准）；若长期实验建议专项申请。
+
+---
+
 ## 2026-11-21 · Grafana CrashLoopBackOff（OOMKilled 137）
 
 **现象**

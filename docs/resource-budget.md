@@ -37,3 +37,15 @@
 | C: 磁盘 | 24.7 GB 剩余（本阶段增量 ≈3.2GB） | 27.9GB |
 
 **结论**：两阶段合计占用 VM 内存 ~3.5GB / 16GB 预算，后续数据类组件（PostgreSQL/Redis/MQ）仍有充足余量；C: 磁盘需留意（剩 24.7GB，单个大镜像即可达 1GB+）。
+
+
+## 阶段 03 实测（2026-11-21）
+
+| 指标 | 实测 | 对比阶段 02 末 |
+|---|---|---|
+| argocd Pod 合计 | ≈184Mi（controller 99 / server 29 / repo-server 28 / applicationset 23 / redis 5） | — |
+| k3d-lab-server-0 容器 | 3.91 GiB | 2.92GiB → +1GB |
+| WSL VM 整体 used | 4160 MiB / 15782 MiB | 3503Mi → +657Mi |
+| C: 磁盘 | 22.6 GB 剩余（本阶段增量 ≈2.1GB） | 24.3GB |
+
+**结论**：三阶段合计占用 VM 内存 ~4.2GB / 16GB 预算（26%）；C: 磁盘剩余 22.6GB 仍是主要约束。

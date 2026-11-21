@@ -8,7 +8,45 @@
 |------|------|------|
 | 01 | Kubernetes 基础环境（k3d / kubectl / Helm、核心资源与网络验证） | ✅ 已完成，待最终验收 |
 | 02 | Metrics + Prometheus + Grafana（kube-prometheus-stack 93.6.1） | ✅ 已完成，待最终验收 |
-| 03+ | 待规划 | 未开始 |
+| 03 | Argo CD GitOps（v3.6.2，同步/Drift/回滚实验） | ✅ 已完成，待最终验收 |
+| 04+ | 待规划 | 未开始 |
+
+## 阶段 03 — Argo CD（GitOps）
+
+### Preflight / Plan（2026-11-21，获批）
+
+- 集群与余量验证 OK；Argo CD v3.6.2（2026-11-18 发布）核实
+
+### Deploy
+
+- **计划偏差**：argo-helm chart 仓库（argoproj.github.io）被本机 DNS 拦截 → 改经 `oci://ghcr.io/argoproj/argo-helm/argo-cd:10.18.2`（appVersion 精确对应 v3.6.2）；network 细节见 troubleshooting.md
+- argocd CLI（winget argoproj.argocd 3.6.2）；values 最小化（禁 dex/notifications）
+- `applicationSet.enabled=false` 未生效（chart 10.x key 变化），接受现状并记录
+- gitops/ 目录结构：bootstrap / apps / workloads
+
+### Verify / Experiment（全部通过）
+
+- 首次 Sync ~20s → Synced/Healthy；2 副本 + v1.0.0 ✓
+- Git 变更自动同步：push 后 ~2min 收敛为 3 副本 + v1.1.0，零 kubectl 操作 ✓
+- Drift：scale 到 5 → 40s 内 OutOfSync（selfHeal 关闭不纠正）→ 手动 sync 收敛回 3 ✓
+- 回滚：`argocd app rollback` 被 auto-sync 拒绝（FailedPrecondition，设计如此）→ 改 git revert → ~2min 自动收敛回 2 副本 + v1.0.0 ✓
+
+### Review（资源实测）
+
+- argocd ≈184Mi；VM used 4160MiB/15782MiB（三阶段合计 ~26% 预算）；C: 剩 22.6GB
+
+### Definition of Done 核对
+
+- [x] 部署配置可复现（values + OCI 命令）
+- [x] 核心功能验证（Sync/Drift/回滚/values 管理）
+- [x] 安全边界（无 finalizer、prune=false、不接管现存服务、无 PVC）
+- [x] 资源占用记录；异常记录（DNS 拦截、applicationSet 偏差）
+- [x] 生产差异说明（experiments/03 §7）；清理步骤（§8）
+
+### 待办
+
+- [ ] 架构负责人最终验收（阶段 01–03）
+- [ ] 建议 Git Commit：experiments/03、docs 更新
 
 ## 阶段 02 — Metrics + Prometheus + Grafana
 
