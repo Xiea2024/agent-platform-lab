@@ -72,3 +72,20 @@
 
 - 本机 DNS 拦截 `raw.githubusercontent.com` / `*.github.io`（0.0.0.0 黑洞），ghcr.io / api.github.com / quay.io / docker.io 正常
 - 组件选型时把"是否有 ghcr OCI 制品"作为可达性权重项；需要 GitHub 文件时走 blobs API
+
+
+---
+
+## 2026-11-21 · 阶段 04：Envoy Gateway + Gateway API
+
+### D-11 南北向入口：Envoy Gateway（Gateway API 实现）
+
+- **选择**：Envoy Gateway v1.10.0 作为集群唯一 Gateway 实现；不启用 Ingress Controller（Traefik 阶段 01 已禁用）
+- **理由**：AGENTS.md §3.2 优先 Gateway API；Gateway API 是 K8s 南北向流量的标准 API（Ingress 继任者）；一个 GatewayClass 可由实现替换（图纸与施工分离）
+- **替代方案**：Traefik/NGINX Ingress（Ingress API，旧标准）、HAProxy Ingress、Kong；Cilium Gateway（若后续 Cilium CNI）
+- **CRD channel 决策**：保持 k3s 自带 standard channel（experimental CRD 被 VAP 拒绝是预期保护），URLRewrite/Timeouts 均已在 standard
+
+### D-12 镜像获取：宿主直连与 Docker daemon 分离
+
+- 宿主机（helm/curl）→ docker hub 认证端点被墙；Docker daemon → 配 daocloud 镜像站正常；集群内容器 → 与宿主网络同层，偶发 EOF（重试即可）
+- 原则：**宿主机获取制品（chart/tgz）走镜像站 OCI 路径；容器镜像拉取依赖 daemon mirror 不变**

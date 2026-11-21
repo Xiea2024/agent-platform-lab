@@ -1,52 +1,55 @@
 # Architecture — 整体架构与组件关系
 
-> 随阶段推进逐步更新。当前包含阶段 01（基础环境）、02（监控）、03（GitOps）。
+> 随阶段推进逐步更新。当前包含阶段 01–04。
 
-## 现状（截至阶段 03）
+## 现状（截至阶段 04）
 
 ```
 Windows 11 (32GB RAM)
-└── WSL2  VM（Docker Desktop，内存上限 ≈15.4GiB，符合 16GB 预算）
-    └── Docker Engine 29.6.1
-        └── k3d 集群 "lab"（容器化 k3s v1.37.2，单 Server 节点，可调度）
-            ├── flannel（CNI）/ CoreDNS / ServiceLB / local-path-provisioner / metrics-server
-            ├── Namespace demo：nginx + PVC（阶段 01，kubectl 直管）
-            ├── Namespace monitoring：kube-prometheus-stack 93.6.1（阶段 02）
-            └── Namespace argocd：Argo CD v3.6.2（阶段 03，GitOps 控制面）
-                └── Application gitops-demo → 同步 Git 仓库 gitops/workloads/gitops-demo
-                    └── Namespace gitops-demo：nginx（2 副本，当前版本 v1.0.0）
+└── WSL2 VM（Docker Desktop，≈15.4GiB 上限）
+    └── Docker Engine 29.6.1（registry mirror: docker.m.daocloud.io）
+        └── k3d 集群 "lab"（k3s v1.37.2，单 Server）
+            ├── 集群基础：flannel / CoreDNS / ServiceLB / local-path / metrics-server
+            │            + Gateway API CRD（standard channel 1.6.301，k3s 自带）
+            ├── ns demo：nginx + PVC（kubectl 直管）
+            ├── ns monitoring：kube-prometheus-stack（helm 直管）
+            ├── ns argocd：Argo CD（GitOps 控制面）
+            │   └── Application gitops-demo → ns gitops-demo（nginx v1.0.0）
+            ├── ns envoy-gateway-system：Envoy Gateway v1.10.0
+            │   ├── envoy-gateway（Gateway Controller：CR→xDS 翻译）
+            │   └── envoy-gateway-lab-lab-gateway（Envoy Data Plane：L7 代理）
+            │       └── LoadBalancer Service :80
+            └── ns gateway-lab：Gateway lab-gateway + HTTPRoute
+                └── backend-v1×3 / backend-v2 / slow-backend
 ```
 
-## GitOps 数据流
+## 流量路径（南北向）
 
 ```
-本仓库 GitHub (唯一事实来源)
-  gitops/workloads/<chart>/values.yaml
-        │  Argo CD 3min 轮询（argocd-repo-server 拉取）
-        ▼
-argocd-application-controller ──diff/sync──▶ 集群实际状态
-        │ OutOfSync 时只报告（selfHeal=false）
-        ▼
-kubectl / CLI 手动 sync 收敛；回滚经 git revert 到 Git
+外部 HTTP ──port-forward──▶ Envoy Data Plane(:80)
+                              │ HTTPRoute 规则：路径匹配/重写/加权/超时
+                              ▼
+                          backend-v1/v2（ClusterIP）
 ```
 
-- 现存 demo / monitoring 等 kubectl 直管资源**不在** Argo CD 管理面内（安全边界）
-- 监控栈（阶段 02）仍由 helm 直管；后续阶段可评估迁入 Argo CD
+- 入口能力均由 Gateway API CR 声明（图纸），Envoy Gateway Controller 翻译为 Envoy 配置（xDS 热更新）
+- 尚无 TLS、无生产 LB（k3s ServiceLB 模拟）、无限流/鉴权策略（后续阶段可加 BackendTrafficPolicy/SecurityPolicy）
 
-## 平面划分（目标架构演进中）
+## 平面划分
 
-| 平面 | 当前 | 后续阶段 |
+| 平面 | 当前 | 后续 |
 |---|---|---|
-| 控制平面 | k3s 单 Server + Argo CD GitOps | 多 Server etcd HA |
-| 执行平面 | 同节点 kubelet + 业务 Pod | Agent 节点池、资源配额 |
-| 可观测平面 | Prometheus + Grafana + Alertmanager | Loki/Tempo、告警通知渠道 |
-| GitOps 平面 | Argo CD 单实例，Application 逐个注册 | ApplicationSet 批量管理、多集群 |
-| 数据平面 | — | PostgreSQL / Redis / MQ（各自 Owner，经 Argo CD 发布） |
+| 控制平面 | k3s 单 Server | 多 Server HA |
+| 执行平面 | 单节点 kubelet + 业务 Pod | 节点池、配额 |
+| 流量入口 | Envoy Gateway + Gateway API | TLS、多网关、策略（限流/鉴权） |
+| 可观测 | Prometheus + Grafana + Alertmanager | Loki/Tempo、通知渠道 |
+| GitOps | Argo CD（应用逐个注册） | ApplicationSet、组件迁入 GitOps |
+| 数据平面 | — | PostgreSQL / Redis / MQ（各自 Owner） |
 | 模型平面 | — | 外部 API / Mock Model |
 
 ## 端口与访问
 
-- kubectl API：`https://127.0.0.1:5347`（troubleshooting.md）
-- Grafana :3000 / Prometheus :9090 / Alertmanager :9093（port-forward，阶段 02）
-- Argo CD UI：`kubectl -n argocd port-forward svc/argocd-server 8080:443` → https://localhost:8080
-- Service CIDR：10.43.0.0/16
+- kubectl API：https://127.0.0.1:5347
+- Grafana :3000 / Prometheus :9090 / Alertmanager :9093 / Argo CD :8080（https）
+- Envoy Gateway：`kubectl -n envoy-gateway-system port-forward svc/envoy-gateway-lab-lab-gateway-8e66c156 18081:80`
+- 宿主机 80/443 仍空闲；C: 剩 19.8GB（关注）

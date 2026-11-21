@@ -1,0 +1,31 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gateway-lab
+  namespace: gateway-lab
+spec:
+  parentRefs:
+    - name: lab-gateway
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /v1}}]
+      filters:
+        - type: URLRewrite # 匹配前缀后重写为 /，后端无需感知入口路径
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /}
+      backendRefs: [{name: backend-v1, port: 80}]
+    - matches: [{path: {type: PathPrefix, value: /v2}}]
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path: {type: ReplacePrefixMatch, replacePrefixMatch: /}
+      backendRefs: [{name: backend-v2, port: 80}]
+    - matches: [{path: {type: PathPrefix, value: /slow}}]
+      timeouts:
+        backendRequest: "2s" # 后端 2 秒不响应即由 Gateway 返回 504
+      backendRefs: [{name: slow-backend, port: 8080}]
+    # 根路径：加权切流规则（实验期权重会被 kubectl patch 修改，
+    # 本文件中的 100/0 即"回滚目标状态"）
+    - matches: [{path: {type: PathPrefix, value: /}}]
+      backendRefs:
+        - {name: backend-v1, port: 80, weight: 100}
+        - {name: backend-v2, port: 80, weight: 0}
