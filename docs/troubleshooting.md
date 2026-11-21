@@ -143,3 +143,59 @@ Grafana 13（13.3.1-distroless）加载 25 个 provision 仪表盘 + 内置插�
 **根因**：CNPG 实例内本地访问只放行 postgres 操作系统用户经 peer 映射到 postgres 角色；`-superuser` secret 按需创建，未配置外部访问时不生成。
 
 **解决（实验访问模型）**：实例内运维操作一律 `psql -U postgres`（peer 免密）；应用访问走网络 + `<cluster>-app` secret（密码认证）；需要应用用户拥有测试表时，用 postgres 建表后 `ALTER TABLE ... OWNER TO app`。
+
+
+---
+
+## 2026-11-21 · keycloakx chart 启动崩溃：`kc.sh` 打印帮助即退出
+
+**现象**：Keycloak Pod CrashLoopBackOff，日志是 kc.sh 的 usage 帮助。
+
+**根因**：chart 默认 `command: []`（values 注释 "Overrides the default entrypoint"），镜像 ENTRYPOINT 为 `/opt/keycloak/bin/kc.sh` 且无参数 → 打印帮助退出。chart 不会自动生成 `start` 命令。
+
+**解决**：values 显式给出：
+```yaml
+command: ["/opt/keycloak/bin/kc.sh", "start"]
+```
+KC_DB* 等由 chart 以环境变量注入，start 模式自动读取。
+
+**附带发现**：helm upgrade 更新 StatefulSet 模板后旧 Pod 可能不滚动（本次需手动 `kubectl delete pod` 强制重建）。
+
+---
+
+## 2026-11-21 · KC_HOSTNAME 与 JWKS 访问地址不同源导致验签失败
+
+**现象**：API 验证 token 报 `invalid token: PyJWKClientConnectionError`。
+
+**根因**：KC_HOSTNAME 设为 `http://keycloak.identity:8080`，但集群内不存在该 Service（真实服务名 `keycloak-keycloakx-http`，端口 80）。
+
+**弯路**：ExternalName Service 别名——**kube-proxy 对 ExternalName 只做 DNS CNAME，不做端口映射**，client 连 `别名:8080` 实际打到目标 Service 的 8080（未监听）→ 仍不通。
+
+**解决（D-18 双 Service 模式）**：再建一个 ClusterIP Service（selector 指向同一 Pod，`8080→8080`），集群内统一用 `keycloak.identity:8080`，与 KC_HOSTNAME/iss 同源。
+
+---
+
+## 2026-11-21 · Keycloak 26 password grant：`Account is not fully set up`
+
+**现象**：`grant_type=password` 返回 `invalid_grant / Account is not fully set up`。
+
+**根因**：KC26 对密码流校验用户 profile 完整性，**email + emailVerified + firstName + lastName 缺一即拒绝**。client_credentials（服务账号）不受影响——这解释了为何 SA token 一开始就能拿。
+
+**解决**：kcadm 补齐用户属性：
+```bash
+kcadm update users/<id> -r lab -s email=viewer@lab.local -s emailVerified=true -s firstName=View -s lastName=Er
+```
+
+---
+
+## 2026-11-21 · FastAPI 依赖注入 422：`HTTPAuthorizationCredentials | None` 被当作 body
+
+**现象**：带正确 Bearer token 请求返回 422 `{"loc":["body"],"msg":"Field required"}`。
+
+**根因**：依赖函数签名 `def verify_token(creds: HTTPAuthorizationCredentials | None = None)`——FastAPI 不会把裸类型注解识别为 security scheme，union + 默认 None 使它被当作普通请求体字段。
+
+**解决**：显式挂 `Depends(bearer)`：
+```python
+def verify_token(creds: HTTPAuthorizationCredentials = Depends(bearer)):
+```
+**教训**：自建镜像先本地 `docker run -p 8000:8000` 冒烟再导入集群，能省一轮镜像重建。

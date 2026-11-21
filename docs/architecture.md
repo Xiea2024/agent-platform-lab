@@ -22,9 +22,24 @@ Windows 11 (32GB RAM)
             ├── ns gateway-lab：Gateway lab-gateway + HTTPRoute
             │   └── backend-v1×3 / backend-v2 / slow-backend
             ├── ns cnpg-system：CloudNativePG operator v1.30.2（数据平面 Owner）
-            └── ns database：Cluster pg-lab（PG 18.7，主备异步流复制，PVC 1Gi×2）
-                ├── 服务 pg-lab-rw / -ro / -r；PodMonitor 接入 Prometheus
-                └── backup-pod（pg_dump 逻辑备份 → backup-data PVC）
+            ├── ns database：Cluster pg-lab（PG 18.7，主备异步流复制，PVC 1Gi×2）
+            │   ├── 服务 pg-lab-rw / -ro / -r；PodMonitor 接入 Prometheus
+            │   ├── keycloak 库（身份平面的数据库依赖）
+            │   └── backup-pod（pg_dump 逻辑备份 → backup-data PVC）
+            ├── ns cache：Valkey 9.2（Deployment+RDB PVC+密码 Secret）
+            └── ns identity：Keycloak 26.8.1（StatefulSet，pg-lab 后端）
+                ├── svc keycloak-keycloakx-http:80（宿主 port-forward）
+                ├── svc keycloak:8080（集群内别名，与 iss 同源，D-18）
+                └── lab-api（FastAPI 受保护 API，本地构建镜像）
+```
+
+## 依赖关系（数据流）
+
+```
+API 客户端 ──token──▶ Keycloak(身份平面) ──JDBC──▶ pg-lab-rw(数据平面)
+    │                                                ▲
+    └──Bearer JWT──▶ lab-api ──JWKS 验签──▶ Keycloak ┘
+lab-api 缓存场景（后续 Worker 用）：──▶ Valkey:6379（cache 平面，可选加速）
 ```
 
 ## 数据平面现状（各组件自带 Owner）

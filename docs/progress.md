@@ -10,41 +10,34 @@
 | 02 | Metrics + Prometheus + Grafana | ✅ 已完成，待最终验收 |
 | 03 | Argo CD GitOps | ✅ 已完成，待最终验收 |
 | 04 | Envoy Gateway + Gateway API | ✅ 已完成，待最终验收 |
-| 05 | cert-manager 评估 + CloudNativePG（HA/备份/RPO-RTO） | ✅ 已完成，待最终验收 |
-| 06+ | 待规划（建议：Redis 或 MQ；磁盘已解除预警） | 未开始 |
+| 05 | cert-manager 评估 + CloudNativePG | ✅ 已完成，待最终验收 |
+| 06 | Valkey + Keycloak + 受保护 API | ✅ 已完成，待最终验收 |
+| 07+ | 待规划（建议：MQ 或 Agent 执行平面首个 Worker） | 未开始 |
 
-## 阶段 05 — cert-manager 评估 + CloudNativePG
+## 阶段 06 — Valkey + Keycloak
 
-### Preflight / Plan（2026-11-21，分两批获批）
+### Preflight / Plan（2026-11-21，获批 6A+6B）
 
-- cert-manager 不存在且 CloudNativePG 无依赖 → **不安装**（避免重复组件）✓
-- CloudNativePG v1.30.2（chart 0.29.2，ghcr OCI）；磁盘 95.2GB ✓
+- 版本：Valkey 9.2.0 / Keycloak 26.8.1（keycloakx chart 7.4.0）
+- cert-manager 仍不需要（两组件均内置证书能力）
 
-### Deploy / Verify
+### 6A Valkey（验收通过）
 
-- operator + pg-lab（2 实例，PG 18.7，PVC 1Gi×2，异步流复制，PodMonitor 接入 Prometheus）
-- 服务 -rw/-ro/-r；数据 100 行主备一致；`cnpg_pg_replication_lag=0`
-- 排错：镜像 tag 需与实例一致（18.7-system-trixie）、裸 Pod 改 image 须重建、pg_dump 版本匹配、1.30 无 superuser secret（用 app 用户 + 属主转让）
+- TTL：20s 递减精确、过期即删 ✓
+- 持久化三场景：优雅删 Pod 零丢失（停机自动 SAVE）/ SAVE 快照恢复 / **DEBUG SEGFAULT 崩溃丢失脏数据**（等价断电，RPO=快照窗口）✓
 
-### Experiment
+### 6B Keycloak + 受保护 API（验收通过）
 
-| 实验 | 结果 |
-|---|---|
-| 物理备份路径 | `Backup` CR failed（no backup section）→ 需对象存储，证据记录 |
-| 逻辑备份闭环 | pg_dump → PVC → pg_restore → 校验 100 行 ✓ |
-| Pod 重建（非破坏性） | **实测为自动 failover**：备升主、原主重建为备；RTO≈14s，**RPO=0** |
-| 受控主故障（二次 failover，单独获批） | RTO=**138s**（收敛期故障显著变慢），**RPO=0**（时间线铁证）；拓扑恢复初始 |
+- Realm lab / client lab-api / role api-user / tester(viewer 对照组) / SA 绑定 ✓
+- JWT claims 验证（iss/azp/roles/exp）；password grant 排错（KC26 profile 完整性要求）✓
+- **RBAC 矩阵：public 200 / 无 token 401 / 无角色 403 / 有角色 200×2** ✓
+- 关键认知成文：**JWT 认证 ≠ 租户隔离**（experiments/06 §2.5，含 RLS 等四层隔离路径）
 
 ### Review（资源实测）
 
-- pg 115Mi + operator 33Mi；VM used 5082MiB（31%）；C: 96.7GB
+- Valkey 4Mi / Keycloak 701Mi / API 37Mi；VM used 5795MiB（36%）；C: 95.7GB
+- 依赖链：lab-api → keycloak.identity(JWKS) → pg-lab-rw(PG)
 
-### Definition of Done 核对
+## 阶段 01–05 归档
 
-- [x] 部署可复现；PVC/主备角色/备份路径全检查；两次故障实验 + RPO/RTO 观测表
-- [x] 单副本重启 vs 多副本切换区分（experiments/05 §4.3）
-- [x] 资源占用；异常记录；生产差异（§6）；清理步骤（§7）
-
-## 阶段 01–04 归档
-
-- 01 `experiments/01-kubernetes-baseline.md` / 02 `experiments/02-monitoring.md` / 03 `experiments/03-gitops-argocd.md` / 04 `experiments/04-gateway-api.md`
+- 01 `experiments/01-kubernetes-baseline.md` / 02 `02-monitoring.md` / 03 `03-gitops-argocd.md` / 04 `04-gateway-api.md` / 05 `05-postgres-cnpg.md`

@@ -1,0 +1,39 @@
+# codecentric keycloakx chart 7.4.0 (Keycloak 26.8.1) — 实验最小配置
+# 安装前需创建 secret：kubectl create secret generic keycloak-secrets -n identity \
+#   --from-literal=admin-username=admin --from-literal=admin-password='<random>'
+replicas: 1
+
+# chart 不自动生成启动命令（镜像 ENTRYPOINT 只有 kc.sh 无参数），须显式给出
+command:
+  - /opt/keycloak/bin/kc.sh
+  - start # 生产模式；KC_DB* 环境变量由 database 段注入
+
+database:
+  vendor: postgres
+  hostname: pg-lab-rw.database # 依赖阶段 05 的数据平面
+  port: 5432
+  database: keycloak
+  username: app
+  existingSecret: keycloak-db
+  existingSecretKey: password
+
+http:
+  relativePath: "/" # KC26 默认无前缀
+
+extraEnv: |
+  - name: KC_HOSTNAME
+    value: "http://keycloak.identity:8080" # token iss 前缀；API 集群内同源校验
+  - name: KC_BOOTSTRAP_ADMIN_USERNAME
+    valueFrom:
+      secretKeyRef: {name: keycloak-secrets, key: admin-username}
+  - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: keycloak-secrets, key: admin-password}
+
+resources:
+  requests:
+    cpu: "300m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1.5Gi"

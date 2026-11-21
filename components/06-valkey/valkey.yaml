@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cache
+---
+# 密码由部署时生成：kubectl create secret generic valkey-auth -n cache \
+#   --from-literal=password='<random>' （不提交 Git）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey
+  namespace: cache
+  labels: {app: valkey}
+spec:
+  replicas: 1
+  strategy: {type: Recreate} # 单实例+RWO PVC：滚动更新会卡在新旧并存
+  selector:
+    matchLabels: {app: valkey}
+  template:
+    metadata:
+      labels: {app: valkey}
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:9.2
+          args:
+            - --requirepass
+            - $(VALKEY_PASSWORD)
+            - --appendonly
+            - "no" # 默认 RDB 持久化（save 点策略）；AOF 为可选项
+            - --dir
+            - /data
+            - --enable-debug-command
+            - local # 允许本地连接使用 DEBUG（实验用：模拟崩溃）
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: valkey-auth, key: password}
+          ports: [{containerPort: 6379}]
+          volumeMounts: [{name: data, mountPath: /data}]
+          resources:
+            requests: {cpu: "30m", memory: "48Mi"}
+            limits: {cpu: "200m", memory: "128Mi"}
+          readinessProbe: {tcpSocket: {port: 6379}, periodSeconds: 5}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: valkey-data}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valkey-data
+  namespace: cache
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: cache
+spec:
+  selector: {app: valkey}
+  ports: [{port: 6379, targetPort: 6379}]

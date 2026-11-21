@@ -111,3 +111,24 @@
 
 - 物理备份（barmanObjectStore / VolumeSnapshot）要求实验环境不具备的设施；用 `Backup` CR 实测报错作为证据
 - 逻辑备份（pg_dump→PVC→pg_restore）作为实验内闭环路径；生产方案（S3+WAL 归档+PITR）写入文档差异章节
+
+
+---
+
+## 2026-11-21 · 阶段 06：Valkey + Keycloak + 受保护 API
+
+### D-16 Valkey 用 manifest 直装（放弃官方 chart 探测）
+
+- 单实例缓存场景下，helm chart 的收益（参数化）不值得承担分发渠道不可达风险（D-10）——manifest 16 行即完整可复现
+- 缓存平面默认允许丢失：RDB 默认 save 点 + 优雅停机 SAVE 已够实验；AOF/哨兵/集群按需后加
+
+### D-17 Keycloak 选 codecentric keycloakx（ghcr OCI）
+
+- bitnami chart 在 daocloud 镜像站 403；keycloakx 7.4.0 经 ghcr OCI 直达、appVersion 精确、社区成熟
+- chart 默认 `command: []` 需显式 `kc.sh start`（troubleshooting 记录）
+
+### D-18 Keycloak hostname 双 Service 模式
+
+- iss（KC_HOSTNAME）必须与集群内 JWKS 访问地址同源，否则验签 issuer 校验失败
+- ExternalName 不做端口映射（仅 DNS CNAME）→ 弃用；采用 **ClusterIP 别名 Service 指向同一 Pod**，`keycloak-keycloakx-http:80`（宿主）与 `keycloak:8080`（集群内）并存
+- 该模式同样适用于后续其他带 issuer 的内网组件

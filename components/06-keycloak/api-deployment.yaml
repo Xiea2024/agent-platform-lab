@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-api
+  namespace: identity
+  labels: {app: lab-api}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lab-api}
+  template:
+    metadata:
+      labels: {app: lab-api}
+    spec:
+      containers:
+        - name: api
+          image: lab-api:0.1.0 # 本地构建后经 k3d image import 导入
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8000}]
+          env:
+            - name: JWKS_URL
+              value: http://keycloak.identity:8080/realms/lab/protocol/openid-connect/certs
+            - name: ISSUER
+              value: http://keycloak.identity:8080/realms/lab
+          resources:
+            requests: {cpu: "50m", memory: "96Mi"}
+            limits: {cpu: "300m", memory: "256Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab-api
+  namespace: identity
+spec:
+  selector: {app: lab-api}
+  ports: [{port: 8000, targetPort: 8000}]
